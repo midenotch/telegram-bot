@@ -24,6 +24,7 @@ import {
   winnerSideLabel,
   type DecodedEvent,
 } from "../stellar/decode.js";
+import { groupDigestEvents } from "./digest-grouping.js";
 import type { StellarConfig } from "../config.js";
 import {
   EXPLORER_BUTTON_TEXT,
@@ -281,16 +282,68 @@ export function formatLastEvent(config: StellarConfig, event: DecodedEvent): str
   );
 }
 
+/** Options for {@link formatDigest}. */
+export interface FormatDigestOptions {
+  /**
+   * When `true`, events are grouped by claim / squad market before rendering.
+   * Multi-event groups get an escaped Group_Key header and indented sub-lines;
+   * singletons are rendered exactly like the flat layout.
+   *
+   * Defaults to `false` — the existing flat layout is unchanged when this
+   * option is omitted or set to `false`.
+   */
+  grouped?: boolean;
+}
+
+/**
+ * One digest line in the flat layout.  Extracted so both the flat path and the
+ * grouped renderer share identical line formatting.
+ */
+function flatLine(event: DecodedEvent): string {
+  const name = event.payload.name === "unknown" ? event.payload.eventName : event.payload.name;
+  return `· mimir\\-${escapeMd(event.source)} \`${escapeMd(clip(name, 80))}\` at ledger ${event.ledger}`;
+}
+
+/**
+ * Render a grouped digest.  Called only when `options.grouped` is `true`.
+ */
+function renderGroupedDigest(events: readonly DecodedEvent[]): string {
+  const groups = groupDigestEvents(events);
+  const header = `*Mimir Digest* — ${events.length} events in this cycle`;
+  const body: string[] = [];
+
+  for (const group of groups) {
+    if (group.events.length === 1) {
+      // Singleton group: no header, no indentation — identical to flat layout.
+      const [sole] = group.events;
+      if (sole) body.push(flatLine(sole));
+    } else {
+      // Multi-event group: MarkdownV2-escaped Group_Key as header, then
+      // each event on an indented line.
+      body.push(escapeMd(group.key));
+      for (const e of group.events) {
+        body.push(`  ${flatLine(e)}`);
+      }
+    }
+  }
+
+  return [header, "", ...body].join("\n");
+}
+
 /**
  * One MarkdownV2 message summarising a burst of events: a header with the count
  * and one bounded line per event. Returns null when there is nothing to send.
+ *
+ * Pass `{ grouped: true }` to group consecutive events by claim / squad market.
+ * The default (`{}` or no second argument) produces the unchanged flat layout.
  */
-export function formatDigest(events: readonly DecodedEvent[]): string | null {
+export function formatDigest(
+  events: readonly DecodedEvent[],
+  options: FormatDigestOptions = {},
+): string | null {
   if (events.length === 0) return null;
-  const lines = events.map((event) => {
-    const name = event.payload.name === "unknown" ? event.payload.eventName : event.payload.name;
-    return `· mimir\\-${escapeMd(event.source)} \`${escapeMd(clip(name, 80))}\` at ledger ${event.ledger}`;
-  });
+  if (options.grouped) return renderGroupedDigest(events);
+  const lines = events.map(flatLine);
   return [`*Mimir Digest* — ${events.length} events in this cycle`, "", ...lines].join("\n");
 }
 
