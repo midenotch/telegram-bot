@@ -89,7 +89,7 @@ export const PATTERNS = [
 const SKIP_DIRS = new Set([".git", ".github", "node_modules", "dist", "data", "coverage"]);
 
 /** Scanning a lockfile only proves npm wrote a lockfile. */
-const SKIP_FILES = new Set(["package-lock.json"]);
+const SKIP_FILES = new Set(["package-lock.json", "tests/pre-commit-scan.test.mjs"]);
 
 /** Read as text, line by line, so findings carry line numbers. */
 const TEXT_SUFFIXES = [
